@@ -88,8 +88,8 @@ namespace ExcelApp
                 (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and (pay_date between '01.01.2014' and '31.12.2017') and (date_inp between '01.01.2014' and '31.12.2017') ) as pay_val_start,
                 (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2014' and '31.12.2017' ) as cor_val_start,
                 (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2018' and '31.03.2018' ) as nach_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2018' and '16.04.2018') ) as pay_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2018' and '16.04.2018' ) as cor_val_now
+                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2018' and '14.04.2018') ) as pay_val_now,
+                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2018' and '14.04.2018' ) as cor_val_now
 
                 from 
                 [ORACLE].[dbo].fls_view
@@ -250,8 +250,10 @@ namespace ExcelApp
                 }
 
 
-                //Заполняем данные на конец отчетного периода
-                endPeriodSaldo = Convert.ToDouble(row["nach_val_start"]) - Convert.ToDouble(row["pay_val_start"]) + (Convert.ToDouble(row["nach_val_now"]) - Convert.ToDouble(row["pay_val_now"]));
+                //Обрабатываем данные на конец отчетного периода
+                endPeriodSaldo = Convert.ToDouble(row["nach_val_start"]) - Convert.ToDouble(row["pay_val_start"]) + (Convert.ToDouble(row["nach_val_now"]) - Convert.ToDouble(row["pay_val_now"])
+                    + nowCorrValue);
+                
                 if(endPeriodSaldo > 0)
                 {
                     row["nach_val_end"] = endPeriodSaldo;
@@ -273,23 +275,30 @@ namespace ExcelApp
                 if((Convert.ToDouble(row["nach_val_start"]) + Convert.ToDouble(row["pay_val_start"]) + Convert.ToDouble(row["nach_val_now"]) + Convert.ToDouble(row["pay_val_now"])
                     + Convert.ToDouble(row["nach_val_end"]) + Convert.ToDouble(row["pay_val_end"])) != 0)
                     houseTable.Rows.Add(row);
+                //иначе удаляем строку
                 else row = null;
-
-
-
             }
-                //DataTable houseTable = new DataTable();
-                //da.Fill(houseTable);
+
+            //Считаем итоги
+            double totalStartNach = 0;  //итог по начислениям на начало периода
+            double totalStartPay = 0;   //итог по платежам на начало периода
+            double totalNowNach = 0;    //Итог по начислениям на момент отчета
+            double totalNowPay = 0;     //Итог по платежам на момент отчета
+            double totalEndNach = 0;    //Итог по начислениям на конец периода
+            double totalEndPay = 0;     //Итог по платежам на конец периода
+            
+            foreach(DataRow total_row in houseTable.Rows)
+            {
+                totalStartNach += Convert.ToDouble(total_row["nach_val_start"]);
+                totalStartPay += Convert.ToDouble(total_row["pay_val_start"]);
+                totalNowNach += Convert.ToDouble(total_row["nach_val_now"]);
+                totalNowPay += Convert.ToDouble(total_row["pay_val_now"]);
+                totalEndNach += Convert.ToDouble(total_row["nach_val_end"]);
+                totalEndPay += Convert.ToDouble(total_row["pay_val_end"]);
+            }
 
 
-
-
-
-
-
-
-
-
+            ///Выгружаем данные в Excel
             //Объявляем приложение
             Excel.Application exc = new Microsoft.Office.Interop.Excel.Application();
 
@@ -321,14 +330,10 @@ namespace ExcelApp
             double nowNach = 0;
             double nowPay = 0;
 
-            double totalStartNach = 0;  //итог по начислениям на начало периода
-            double totalStartPay = 0;   //итог по платежам на начало периода
-
             rowCounter = +ROWSHIFT;
 
 
             string startCell = "A" + rowCounter;
-
 
             foreach(DataRow active_row in houseTable.Rows)
             {
@@ -374,13 +379,38 @@ namespace ExcelApp
             tRange = wsh.get_Range("B" + ROWSHIFT, "I" + rowCounter);
             tRange.NumberFormat = "0.00";
 
-            ////Выводим итоги
-            //tRange = wsh.get_Range("A" + rowCounter, "A" + rowCounter);
-            //tRange.Value2 = "Итого: ";
-            //tRange = wsh.get_Range("B" + rowCounter, "B" + rowCounter);
-            //tRange.Value2 = totalStartNach;
+            //Выводим итоги
+            tRange = wsh.get_Range("A" + rowCounter, "A" + rowCounter);
+            tRange.Value2 = "Итого: ";
+            tRange = wsh.get_Range("B" + rowCounter, "B" + rowCounter);
+            tRange.Value2 = totalStartNach;
+            tRange = wsh.get_Range("C" + rowCounter, "C" + rowCounter);
+            tRange.Value2 = totalStartPay;
+            tRange = wsh.get_Range("D" + rowCounter, "D" + rowCounter);
+            tRange.Value2 = totalNowNach;
+            tRange = wsh.get_Range("E" + rowCounter, "E" + rowCounter);
+            tRange.Value2 = totalNowPay;
+            tRange = wsh.get_Range("G" + rowCounter, "G" + rowCounter);
+            tRange.Value2 = totalEndNach;
+            tRange = wsh.get_Range("H" + rowCounter, "H" + rowCounter);
+            tRange.Value2 = totalEndPay;
+
+            //Получаем адрес дома
             
-            wb.SaveAs("1.xlsx");
+            string fileName = "";
+            DataTable houseAddr = GetHouseAddr(houseID);            
+            foreach (DataRow dataRow in houseAddr.Rows)
+            {
+                fileName = Convert.ToString (dataRow["HOUSENUM"]);
+                if(Convert.ToString(dataRow["HOUSECORP"])!="")
+                    fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
+                if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
+                    fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
+                fileName += ".xlsx";
+                break;
+            }
+            
+            wb.SaveAs(fileName);
             exc.Quit();
             conn.Close();
             da.Dispose();
@@ -403,6 +433,100 @@ namespace ExcelApp
              Excel.Worksheet sheet = (Excel.Worksheet)ex.Worksheets.get_Item(1);
              //Название листа (вкладки снизу)
              sheet.Name = "Отчет за 13.12.2017";*/
+        }
+
+        public static DataTable GetHouseAddr(int houseID)
+        {
+            DataTable house = new DataTable();
+            
+            DataTable fullAddr = new DataTable();
+            DataColumn column;
+            DataRow row;
+
+
+            //Задаем структуру таблицы fullAddr----------------
+
+            column = new DataColumn();
+            column.ColumnName = "HOUSENUM";
+            column.DataType = System.Type.GetType("System.String");
+            fullAddr.Columns.Add(column);
+
+            column = new DataColumn();
+            column.DataType = System.Type.GetType("System.String");
+            column.ColumnName = "HOUSECORP";
+            fullAddr.Columns.Add(column);
+
+            column = new DataColumn();
+            column.DataType = System.Type.GetType("System.String");
+            column.ColumnName = "HOUSESUFIX";
+            fullAddr.Columns.Add(column);
+
+            column = new DataColumn();
+            column.DataType = System.Type.GetType("System.String");
+            column.ColumnName = "AOGUID";
+            fullAddr.Columns.Add(column);
+
+            //column = new DataColumn();
+            //column.DataType = System.Type.GetType("System.Double");
+            //column.ColumnName = "pay_val_now";
+            //fullAddr.Columns.Add(column);
+
+            //column = new DataColumn();
+            //column.DataType = System.Type.GetType("System.Double");
+            //column.ColumnName = "nach_val_end";
+            //fullAddr.Columns.Add(column);
+
+            //column = new DataColumn();
+            //column.DataType = System.Type.GetType("System.Double");
+            //column.ColumnName = "pay_val_end";
+            //fullAddr.Columns.Add(column);
+            //------------------------------------------------------
+
+            string houseAOGUID = "";
+            string houseNum = "";
+            string houseCorp = "";
+            string houseSufix = "";
+            
+            
+            
+            SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
+
+            csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
+            csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
+            csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
+            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
+            //csbuilder["Multisubnetfailover"] = "True";
+            //csbuilder["Trusted_Connection"] = true;
+
+            Console.WriteLine(csbuilder.ConnectionString);
+
+            string queryString = $@"SELECT DISTINCT AOGUID, HOUSENUM, BUILDNUM, STRUCNUM FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE ADDR = {houseID}";
+
+            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+            SqlCommand cmd = new SqlCommand(queryString, conn);
+            conn.Open();
+            SqlDataAdapter da = new SqlDataAdapter(cmd);
+            da.Fill(house);
+
+            foreach (DataRow active_row in house.Rows)
+            {
+                houseAOGUID = Convert.ToString (active_row["AOGUID"]);
+                houseNum = Convert.ToString(active_row["HOUSENUM"]);
+                houseCorp = Convert.ToString(active_row["BUILDNUM"]);
+                houseSufix = Convert.ToString(active_row["STRUCNUM"]);
+                break;
+            }
+
+            row = fullAddr.NewRow();
+            row["AOGUID"] = houseAOGUID;
+            row["HOUSENUM"] = houseNum;
+            row["HOUSECORP"] = houseCorp;
+            row["HOUSESUFIX"] = houseSufix;
+            fullAddr.Rows.Add(row);            
+            conn.Close();
+            da.Dispose();
+            return fullAddr;
         }
 
         private static bool IsEven(int a)
