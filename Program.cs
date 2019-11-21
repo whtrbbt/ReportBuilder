@@ -4,6 +4,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Configuration;
 using System.IO;
+using System.Collections;
 
 
 namespace ExcelApp
@@ -13,16 +14,20 @@ namespace ExcelApp
         static void Main(string[] args)
         {
 
-            HouseReport(33445);
+            CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
+            //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
+            //HouseReport(33445);
            
         }
 
-        public static void HouseReport(int houseID)
+        public static void HouseReport(int houseID, string streetName, string houseNum)
         {
             DataTable report = new DataTable();
             DataTable houseTable = new DataTable();
             DataColumn column;
             DataRow row;
+            string path = @ConfigurationManager.AppSettings.Get("PATH");
+            string TEMPL_PAHT = @ConfigurationManager.AppSettings.Get("TEMPL_PATH");
 
             //Задаем структуру таблицы houseTable----------------
 
@@ -65,8 +70,8 @@ namespace ExcelApp
             double startCorrValue = 0;
             double nowCorrValue = 0;
             double endPeriodSaldo = 0;
-
-            string MSSQLtableName = @ConfigurationManager.AppSettings.Get("MSSQLtableName");
+            string reportPeriod = @ConfigurationManager.AppSettings.Get("ReportPeriod");
+            //string MSSQLtableName = @ConfigurationManager.AppSettings.Get("MSSQLtableName");
 
 
             SqlConnectionStringBuilder csbuilder =
@@ -79,9 +84,7 @@ namespace ExcelApp
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
             //csbuilder["Multisubnetfailover"] = "True";
             //csbuilder["Trusted_Connection"] = true;
-
-            Console.WriteLine(csbuilder.ConnectionString);
-
+                        
             string queryString = $@"
                 select house, flat_num, fls_full, resp_person,
                 (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '31.12.2017' ) as nach_val_start,
@@ -305,17 +308,25 @@ namespace ExcelApp
             Excel.XlReferenceStyle RefStyle = exc.ReferenceStyle;
 
             Excel.Workbook wb = null;
-            String TemplatePath = "house_report.xltx";
+            
+            //string TemplatePath = "house_report.xltx";
+            
             try
             {
-                wb = exc.Workbooks.Add(TemplatePath); // !!! 
+                wb = exc.Workbooks.Add(TEMPL_PAHT); // !!! 
             }
             catch(System.Exception ex)
             {
-                throw new Exception("Не удалось загрузить шаблон для экспорта " + TemplatePath + "\n" + ex.Message);
+                throw new Exception("Не удалось загрузить шаблон для экспорта " + TEMPL_PAHT + "\n" + ex.Message);
             }
             Console.WriteLine("Шаблон найден, начинаю выгрузку.Это может занять несколько минут.");
             //Excel.Sheets excelsheets;
+
+            //Заполняем реквизиты отчета
+
+            Excel.Worksheet wsh1 = wb.Worksheets.get_Item(1) as Excel.Worksheet;
+            Excel.Range titulRange = wsh1.get_Range("C8", "C8");
+            titulRange.Value2 = reportPeriod;
 
             //Выбираем третий лист
             Excel.Worksheet wsh = wb.Worksheets.get_Item(3) as Excel.Worksheet;
@@ -395,21 +406,28 @@ namespace ExcelApp
             tRange = wsh.get_Range("H" + rowCounter, "H" + rowCounter);
             tRange.Value2 = totalEndPay;
 
-            //Получаем адрес дома
-            
-            string fileName = "";
-            DataTable houseAddr = GetHouseAddr(houseID);            
-            foreach (DataRow dataRow in houseAddr.Rows)
-            {
-                fileName = Convert.ToString (dataRow["HOUSENUM"]);
-                if(Convert.ToString(dataRow["HOUSECORP"])!="")
-                    fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
-                if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
-                    fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
-                fileName += ".xlsx";
-                break;
-            }
-            
+
+
+            //Получаем адрес дома для формирования имени файла
+
+            string fileName = path + streetName;
+
+            if(!Directory.Exists(fileName))
+                Directory.CreateDirectory(fileName);
+
+            fileName += "\\" + RemoveInvalidChars(houseNum) + ".xlsx";
+            //DataTable houseAddr = GetHouseAddr(houseID);            
+            //foreach (DataRow dataRow in houseAddr.Rows)
+            //{
+            //    fileName = Convert.ToString (dataRow["HOUSENUM"]);
+            //    if(Convert.ToString(dataRow["HOUSECORP"])!="")
+            //        fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
+            //    if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
+            //        fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
+            //    fileName += ".xlsx";
+            //    break;
+            //}
+
             wb.SaveAs(fileName);
             exc.Quit();
             conn.Close();
@@ -499,8 +517,6 @@ namespace ExcelApp
             //csbuilder["Multisubnetfailover"] = "True";
             //csbuilder["Trusted_Connection"] = true;
 
-            Console.WriteLine(csbuilder.ConnectionString);
-
             string queryString = $@"SELECT DISTINCT AOGUID, HOUSENUM, BUILDNUM, STRUCNUM FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE ADDR = {houseID}";
 
             SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
@@ -529,6 +545,119 @@ namespace ExcelApp
             return fullAddr;
         }
 
+        
+        public static void StreetReport (string aoGUID, string streetName)
+        //Формирует отчет по всем домам на улице
+        {
+            DataTable houses = new DataTable();
+            
+           // DataTable fullAddr = new DataTable();
+            DataColumn column;
+            DataRow row;
+
+
+
+            //string houseAOGUID = "";
+            //string houseNum = "";
+            //string houseCorp = "";
+            //string houseSufix = "";
+            
+            
+            
+            SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
+
+            csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
+            csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
+            csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
+            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
+            //csbuilder["Multisubnetfailover"] = "True";
+            //csbuilder["Trusted_Connection"] = true;         
+
+            string queryString = $@"SELECT ADDR, HOUSENUM FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE AOGUID = '{aoGUID}'";
+
+            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+            SqlCommand cmd = new SqlCommand(queryString, conn);
+            conn.Open();
+            SqlDataAdapter da = new SqlDataAdapter(cmd);
+            da.Fill(houses);
+            
+            int houseID = 0;
+
+            foreach (DataRow active_row in houses.Rows)
+            {
+                HouseReport(Convert.ToInt32(active_row["ADDR"]), streetName, Convert.ToString(active_row["HOUSENUM"]));
+            }
+
+            conn.Close();
+            da.Dispose();
+
+        }
+
+        public static void CityReport(string cityGUID)
+        {
+            DataTable streets = new DataTable();
+
+            // DataTable fullAddr = new DataTable();
+            DataColumn column;
+            DataRow row;
+
+
+
+            //string houseAOGUID = "";
+            //string houseNum = "";
+            //string houseCorp = "";
+            //string houseSufix = "";
+
+
+
+            SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
+
+            csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
+            csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
+            csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
+            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
+            //csbuilder["Multisubnetfailover"] = "True";
+            //csbuilder["Trusted_Connection"] = true;         
+
+            string queryString = $@"SELECT distinct AOGUID, OFFNAME, SHORTNAME
+                                    FROM [ORACLE].[dbo].[FIAS_ADDROBJ_LOAD]
+                                    where PARENTGUID = '{cityGUID}' and AOLEVEL = 7 and ACTSTATUS = 1
+                                    order by aoguid";
+
+            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+            SqlCommand cmd = new SqlCommand(queryString, conn);
+            conn.Open();
+            SqlDataAdapter da = new SqlDataAdapter(cmd);
+            da.Fill(streets);
+
+
+
+            foreach(DataRow active_row in streets.Rows)
+            {
+                StreetReport(Convert.ToString(active_row["AOGUID"]), Convert.ToString(active_row["OFFNAME"]));
+                //    if(Convert.ToString(dataRow["HOUSECORP"])!="")
+                //        fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
+                //    if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
+                //        fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
+            }
+
+            conn.Close();
+            da.Dispose();
+        }
+
+        public static String RemoveInvalidChars(String file_name)
+        //Убирает недопустимые символы из имени файла
+        
+        {
+            foreach(Char invalid_char in Path.GetInvalidFileNameChars())
+            {
+                file_name = file_name.Replace(oldValue: invalid_char.ToString(), newValue: "_");
+            }
+            return file_name;
+        }
+        
         private static bool IsEven(int a)
         {
             return (a % 2) == 0;
