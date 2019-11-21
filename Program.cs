@@ -20,14 +20,15 @@ namespace ExcelApp
            
         }
 
-        public static void HouseReport(int houseID, string streetName, string houseNum)
+        public static void HouseReport(int houseID, string streetType, string streetName, string houseNum, string houseCorp, string houseSufix)
+        //Формирует отчет по дому
         {
             DataTable report = new DataTable();
             DataTable houseTable = new DataTable();
             DataColumn column;
             DataRow row;
             string path = @ConfigurationManager.AppSettings.Get("PATH");
-            string TEMPL_PAHT = @ConfigurationManager.AppSettings.Get("TEMPL_PATH");
+            string TEMPL_PATH = @ConfigurationManager.AppSettings.Get("TEMPL_PATH");
 
             //Задаем структуру таблицы houseTable----------------
 
@@ -313,19 +314,28 @@ namespace ExcelApp
             
             try
             {
-                wb = exc.Workbooks.Add(TEMPL_PAHT); // !!! 
+                wb = exc.Workbooks.Add(TEMPL_PATH); // !!! 
             }
             catch(System.Exception ex)
             {
-                throw new Exception("Не удалось загрузить шаблон для экспорта " + TEMPL_PAHT + "\n" + ex.Message);
+                throw new Exception("Не удалось загрузить шаблон для экспорта " + TEMPL_PATH + "\n" + ex.Message);
             }
-            Console.WriteLine("Шаблон найден, начинаю выгрузку.Это может занять несколько минут.");
+            //Console.WriteLine("Шаблон найден, начинаю выгрузку.Это может занять несколько минут.");
             //Excel.Sheets excelsheets;
 
             //Заполняем реквизиты отчета
 
             Excel.Worksheet wsh1 = wb.Worksheets.get_Item(1) as Excel.Worksheet;
-            Excel.Range titulRange = wsh1.get_Range("C8", "C8");
+
+            //Выводим адрес дома
+            string houseAddr = "";
+            houseAddr = @ConfigurationManager.AppSettings.Get("OBL") + ", " + @ConfigurationManager.AppSettings.Get("CITY")+", "+
+                streetType + " " + streetName + ", д." + houseNum + " " + houseCorp + " "+ houseSufix;
+            Excel.Range titulRange = wsh1.get_Range("C7", "C7");
+            titulRange.Value2 = houseAddr;
+
+            //Выводим период отчета
+            titulRange = wsh1.get_Range("C8", "C8");
             titulRange.Value2 = reportPeriod;
 
             //Выбираем третий лист
@@ -410,12 +420,19 @@ namespace ExcelApp
 
             //Получаем адрес дома для формирования имени файла
 
-            string fileName = path + streetName;
+            string fileName = path + streetType + streetName;
 
             if(!Directory.Exists(fileName))
                 Directory.CreateDirectory(fileName);
 
-            fileName += "\\" + RemoveInvalidChars(houseNum) + ".xlsx";
+            string houseName = houseNum;
+            if(houseSufix != "")
+                houseName = houseName + "_" + houseSufix;
+            if(houseCorp != "")                
+                houseName = houseName + "_" + houseCorp;
+
+
+            fileName += "\\" + RemoveInvalidChars(houseName) + ".xlsx";
             //DataTable houseAddr = GetHouseAddr(houseID);            
             //foreach (DataRow dataRow in houseAddr.Rows)
             //{
@@ -546,7 +563,7 @@ namespace ExcelApp
         }
 
         
-        public static void StreetReport (string aoGUID, string streetName)
+        public static void StreetReport (string aoGUID, string streetType ,string streetName)
         //Формирует отчет по всем домам на улице
         {
             DataTable houses = new DataTable();
@@ -574,7 +591,7 @@ namespace ExcelApp
             //csbuilder["Multisubnetfailover"] = "True";
             //csbuilder["Trusted_Connection"] = true;         
 
-            string queryString = $@"SELECT ADDR, HOUSENUM FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE AOGUID = '{aoGUID}'";
+            string queryString = $@"SELECT ADDR, HOUSENUM, BUILDNUM, STRUCNUM  FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE AOGUID = '{aoGUID}'";
 
             SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
             SqlCommand cmd = new SqlCommand(queryString, conn);
@@ -583,10 +600,19 @@ namespace ExcelApp
             da.Fill(houses);
             
             int houseID = 0;
+            string houseCorp = "";
+            string houseSufix = "";
+
+            Console.WriteLine(streetName);
 
             foreach (DataRow active_row in houses.Rows)
             {
-                HouseReport(Convert.ToInt32(active_row["ADDR"]), streetName, Convert.ToString(active_row["HOUSENUM"]));
+                if(!Convert.IsDBNull(active_row["BUILDNUM"]))
+                    houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
+                if(!Convert.IsDBNull(active_row["STRUCNUM"]))
+                    houseSufix = @Convert.ToString(active_row["STRUCNUM"]);
+
+                HouseReport(Convert.ToInt32(active_row["ADDR"]), streetType ,streetName, Convert.ToString(active_row["HOUSENUM"]), houseCorp, houseSufix);
             }
 
             conn.Close();
@@ -595,6 +621,7 @@ namespace ExcelApp
         }
 
         public static void CityReport(string cityGUID)
+        //Формирует отчет по всем домам в городе
         {
             DataTable streets = new DataTable();
 
@@ -636,11 +663,8 @@ namespace ExcelApp
 
             foreach(DataRow active_row in streets.Rows)
             {
-                StreetReport(Convert.ToString(active_row["AOGUID"]), Convert.ToString(active_row["OFFNAME"]));
-                //    if(Convert.ToString(dataRow["HOUSECORP"])!="")
-                //        fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
-                //    if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
-                //        fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
+                StreetReport(Convert.ToString(active_row["AOGUID"]), Convert.ToString(active_row["SHORTNAME"]), Convert.ToString(active_row["OFFNAME"]));
+                
             }
 
             conn.Close();
