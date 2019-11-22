@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.Configuration;
 using System.IO;
 using System.Collections;
+using System.Globalization;
 
 
 namespace ExcelApp
@@ -73,6 +74,15 @@ namespace ExcelApp
             double endPeriodSaldo = 0;
             string reportPeriod = @ConfigurationManager.AppSettings.Get("ReportPeriod");
             //string MSSQLtableName = @ConfigurationManager.AppSettings.Get("MSSQLtableName");
+            DateTime START_REPORT_PERIOD = Convert.ToDateTime(@ConfigurationManager.AppSettings.Get("StartReportPeriod"));
+            DateTime END_REPORT_PERIOD = Convert.ToDateTime(@ConfigurationManager.AppSettings.Get("EndReportPeriod"));
+            DateTime PREVIOS_REPORT_PERIOD_END = START_REPORT_PERIOD.AddDays(-1);
+            DateTime PAY_DAY = Convert.ToDateTime(@ConfigurationManager.AppSettings.Get("PayDay"));
+            string startReportPeriod = @START_REPORT_PERIOD.ToString("dd.MM.yyyy");
+            string endReportPeriod = @END_REPORT_PERIOD.ToString("dd.MM.yyyy");
+            string previosReportPeriodEnd = @PREVIOS_REPORT_PERIOD_END.ToString("dd.MM.yyyy");
+            string payDay = @PAY_DAY.ToString("dd.MM.yyyy");
+
 
 
             SqlConnectionStringBuilder csbuilder =
@@ -88,12 +98,13 @@ namespace ExcelApp
                         
             string queryString = $@"
                 select house, flat_num, fls_full, resp_person,
-                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '31.12.2017' ) as nach_val_start,
-                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and (pay_date between '01.01.2014' and '31.12.2017') and (date_inp between '01.01.2014' and '31.12.2017') ) as pay_val_start,
-                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2014' and '31.12.2017' ) as cor_val_start,
-                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2018' and '31.03.2018' ) as nach_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2018' and '14.04.2018') ) as pay_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2018' and '14.04.2018' ) as cor_val_now
+                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '{previosReportPeriodEnd}' ) as nach_val_start,
+                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and (pay_date between '01.01.2014' and '{previosReportPeriodEnd}') and (date_inp between '01.01.2014' and '{previosReportPeriodEnd}') ) as pay_val_start,
+                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2014' and '{previosReportPeriodEnd}' ) as cor_val_start,
+                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '{startReportPeriod}' and
+                '{endReportPeriod}' ) as nach_val_now,
+                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportPeriod}' and '{payDay}') ) as pay_val_now,
+                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '{startReportPeriod}' and '{payDay}' ) as cor_val_now
 
                 from 
                 [ORACLE].[dbo].fls_view
@@ -106,12 +117,14 @@ namespace ExcelApp
                     else FLAT_NUM
                 end";
 
+            Console.WriteLine(queryString);
+
             SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
             SqlCommand cmd = new SqlCommand(queryString, conn);
             conn.Open();
             SqlDataAdapter da = new SqlDataAdapter(cmd);
             // this will query your database and return the result to your datatable
-
+            
             da.Fill(report);
             //houseTable = report.Clone();
             
