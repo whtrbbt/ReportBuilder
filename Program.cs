@@ -81,6 +81,7 @@ namespace ExcelApp
             string endReportPeriod = @END_REPORT_PERIOD.ToString("dd.MM.yyyy");
             string previosReportPeriodEnd = @PREVIOS_REPORT_PERIOD_END.ToString("dd.MM.yyyy");
             string payDay = @PAY_DAY.ToString("dd.MM.yyyy");
+            string startReportYear = "01.01." + @END_REPORT_PERIOD.ToString("yyyy");
 
 
 
@@ -100,9 +101,9 @@ namespace ExcelApp
                 (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '{previosReportPeriodEnd}' ) as nach_val_start,
                 (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and (pay_date between '01.01.2014' and '{previosReportPeriodEnd}') and (date_inp between '01.01.2014' and '{previosReportPeriodEnd}') ) as pay_val_start,
                 (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '01.01.2014' and '{previosReportPeriodEnd}' ) as cor_val_start,
-                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '{startReportPeriod}' and
+                (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '{startReportYear}' and
                 '{endReportPeriod}' ) as nach_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportPeriod}' and '{payDay}') ) as pay_val_now,
+                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportYear}' and '{payDay}') ) as pay_val_now,
                 (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '{startReportPeriod}' and '{payDay}' ) as cor_val_now
 
                 from 
