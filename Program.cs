@@ -16,7 +16,7 @@ namespace ExcelApp
             CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
             //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
             //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
-            //HouseReport(33445);
+            //HouseReport(31054,"1","1","1","1","1");
            
         }
 
@@ -104,7 +104,10 @@ namespace ExcelApp
                 (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '{startReportYear}' and
                 '{endReportPeriod}' ) as nach_val_now,
                 (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportYear}' and '{payDay}') ) as pay_val_now,
-                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '{startReportPeriod}' and '{payDay}' ) as cor_val_now
+                (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '{startReportPeriod}' and '{payDay}' ) as cor_val_now,
+		        (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '{endReportPeriod}' ) as nach_val_end,
+		        (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2014' and '{payDay}') ) as pay_val_end
+
 
                 from 
                 [ORACLE].[dbo].fls_view
@@ -117,7 +120,7 @@ namespace ExcelApp
                     else FLAT_NUM
                 end";
 
-            Console.WriteLine(queryString);
+            //Console.WriteLine(queryString);
 
             SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
             SqlCommand cmd = new SqlCommand(queryString, conn);
@@ -268,28 +271,96 @@ namespace ExcelApp
 
 
                 //Обрабатываем данные на конец отчетного периода
-                endPeriodSaldo = Convert.ToDouble(row["nach_val_start"]) - Convert.ToDouble(row["pay_val_start"]) + (Convert.ToDouble(row["nach_val_now"]) - Convert.ToDouble(row["pay_val_now"])
-                    + nowCorrValue);
-                
-                if(endPeriodSaldo > 0)
+                if((!Convert.IsDBNull(active_row["nach_val_end"])) & (!Convert.IsDBNull(active_row["pay_val_end"])))
                 {
-                    row["nach_val_end"] = endPeriodSaldo;
-                    row["pay_val_end"] = 0;
-                }
-                else if(endPeriodSaldo < 0)
-                {
-                    endPeriodSaldo = Math.Abs(endPeriodSaldo);
-                    row["nach_val_end"] = 0;
-                    row["pay_val_end"] = endPeriodSaldo;
-                }
-                else
-                {
-                    row["nach_val_end"] = endPeriodSaldo;
-                    row["pay_val_end"] = 0;
+                    endPeriodSaldo = Convert.ToDouble(active_row["nach_val_end"]) - Convert.ToDouble(active_row["pay_val_end"]) + nowCorrValue;
+
+                    if(endPeriodSaldo > 0)
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                    else if(endPeriodSaldo < 0)
+                    {
+                        endPeriodSaldo = Math.Abs(endPeriodSaldo);
+                        row["nach_val_end"] = 0;
+                        row["pay_val_end"] = endPeriodSaldo;
+                    }
+                    else
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
                 }
 
-                //Добавляем строку в таблицу для отчета если она не нулевая
-                if((Convert.ToDouble(row["nach_val_start"]) + Convert.ToDouble(row["pay_val_start"]) + Convert.ToDouble(row["nach_val_now"]) + Convert.ToDouble(row["pay_val_now"])
+                else if(!Convert.IsDBNull(active_row["nach_val_end"]))
+                {
+                    endPeriodSaldo = Convert.ToDouble(active_row["nach_val_end"]) + nowCorrValue;
+
+                    if(endPeriodSaldo > 0)
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                    else if(endPeriodSaldo < 0)
+                    {
+                        endPeriodSaldo = Math.Abs(endPeriodSaldo);
+                        row["nach_val_end"] = 0;
+                        row["pay_val_end"] = endPeriodSaldo;
+                    }
+                    else
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                }
+
+                else if(!Convert.IsDBNull(active_row["pay_val_end"]))
+                {
+                    endPeriodSaldo = Convert.ToDouble(active_row["pay_val_end"]) - nowCorrValue;
+
+                    if(endPeriodSaldo > 0)
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                    else if(endPeriodSaldo < 0)
+                    {
+                        endPeriodSaldo = Math.Abs(endPeriodSaldo);
+                        row["nach_val_end"] = 0;
+                        row["pay_val_end"] = endPeriodSaldo;
+                    }
+                    else
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                }
+
+                else
+                {
+                    endPeriodSaldo = nowCorrValue;
+
+                    if(endPeriodSaldo > 0)
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                    else if(endPeriodSaldo < 0)
+                    {
+                        endPeriodSaldo = Math.Abs(endPeriodSaldo);
+                        row["nach_val_end"] = 0;
+                        row["pay_val_end"] = endPeriodSaldo;
+                    }
+                    else
+                    {
+                        row["nach_val_end"] = endPeriodSaldo;
+                        row["pay_val_end"] = 0;
+                    }
+                }
+
+                    //Добавляем строку в таблицу для отчета если она не нулевая
+                    if((Convert.ToDouble(row["nach_val_start"]) + Convert.ToDouble(row["pay_val_start"]) + Convert.ToDouble(row["nach_val_now"]) + Convert.ToDouble(row["pay_val_now"])
                     + Convert.ToDouble(row["nach_val_end"]) + Convert.ToDouble(row["pay_val_end"])) != 0)
                     houseTable.Rows.Add(row);
                 //иначе удаляем строку
