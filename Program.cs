@@ -1,11 +1,9 @@
 ﻿using System;
-using Excel = Microsoft.Office.Interop.Excel;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
-using System.Configuration;
 using System.IO;
-using System.Collections;
-using System.Globalization;
+using Excel = Microsoft.Office.Interop.Excel;
 
 
 namespace ExcelApp
@@ -15,7 +13,8 @@ namespace ExcelApp
         static void Main(string[] args)
         {
 
-            CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
+            CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
+            //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
             //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
             //HouseReport(33445);
            
