@@ -13,11 +13,16 @@ namespace ExcelApp
         static void Main(string[] args)
         {
 
-            CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
+            //Проверяем признак наличия улиц и выбираем нужный метод
+            if (ConfigurationManager.AppSettings.Get("STREET_HAVE_NAME") == "1")
+                CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
+            else
+                StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
+            
             //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
             //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
             //HouseReport(31054,"1","1","1","1","1");
-           
+
         }
 
         public static void HouseReport(int houseID, string streetType, string streetName, string houseNum, string houseCorp, string houseSufix)
@@ -106,7 +111,8 @@ namespace ExcelApp
                 (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportYear}' and '{payDay}') ) as pay_val_now,
                 (select sum (val) from [ORACLE].[dbo].doc_correct where doc_correct.fls = fls_short and doc_correct.CREATED between '{startReportPeriod}' and '{payDay}' ) as cor_val_now,
 		        (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '{endReportPeriod}' ) as nach_val_end,
-		        (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2014' and '{payDay}') ) as pay_val_end
+		        (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '01.01.2014' and '{payDay}') ) as pay_val_end,
+                (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and  (date_inp between '{startReportPeriod}' and '{payDay}') ) as pay_val_period
 
 
                 from 
@@ -130,8 +136,10 @@ namespace ExcelApp
             
             da.Fill(report);
             //houseTable = report.Clone();
-            
 
+            double totalPayNow = 0; //Итог по платежам в отчетном периоде
+            double totalFoundNow = 0; //Итог по всем поступлениям за отчетный период
+            double totalPay = 0; // Итог по всем платежам
 
             foreach(DataRow active_row in report.Rows)
             {
@@ -140,6 +148,7 @@ namespace ExcelApp
                 startCorrValue = 0;
                 nowCorrValue = 0;
                 endPeriodSaldo = 0;
+                
 
 
                 //Заполняем номер квартиры               
@@ -251,7 +260,7 @@ namespace ExcelApp
                 if(!Convert.IsDBNull(active_row["nach_val_now"]))
                 {
                     cellValue = Convert.ToDouble(active_row["nach_val_now"]);
-                    row["nach_val_now"] = cellValue;
+                    row["nach_val_now"] = cellValue;                    
                 }
                 else
                 {
@@ -269,12 +278,19 @@ namespace ExcelApp
                     row["pay_val_now"] = 0;
                 }
 
+                //Собираем итог по платежам за отчетный период
+                if(!Convert.IsDBNull(active_row["pay_val_period"]))
+                {
+                    cellValue = Convert.ToDouble(active_row["pay_val_period"]);                   
+                    totalPayNow += cellValue;
+                }
+
 
                 //Обрабатываем данные на конец отчетного периода
                 if((!Convert.IsDBNull(active_row["nach_val_end"])) & (!Convert.IsDBNull(active_row["pay_val_end"])))
                 {
                     endPeriodSaldo = Convert.ToDouble(active_row["nach_val_end"]) - Convert.ToDouble(active_row["pay_val_end"]) + nowCorrValue;
-
+                    totalPay += Convert.ToDouble(active_row["pay_val_end"]);
                     if(endPeriodSaldo > 0)
                     {
                         row["nach_val_end"] = endPeriodSaldo;
@@ -318,6 +334,7 @@ namespace ExcelApp
                 else if(!Convert.IsDBNull(active_row["pay_val_end"]))
                 {
                     endPeriodSaldo = Convert.ToDouble(active_row["pay_val_end"]) - nowCorrValue;
+                    totalPay += Convert.ToDouble(active_row["pay_val_end"]);
 
                     if(endPeriodSaldo > 0)
                     {
@@ -474,6 +491,23 @@ namespace ExcelApp
 
             }
 
+            //Выводим итоги по платежам на первый лист
+            totalFoundNow = totalPayNow;
+            Excel.Range totalRange;
+            Excel.Worksheet wsh2 = wb.Worksheets.get_Item(1) as Excel.Worksheet;
+            totalRange = wsh2.get_Range("E16", "E16");
+            totalRange.Value2 = totalPayNow;
+            totalRange = wsh2.get_Range("E18", "E18");
+            totalRange.Value2 = totalPayNow;
+            totalRange = wsh2.get_Range("D16", "D16");
+            totalRange.Value2 = totalFoundNow;
+            totalRange = wsh2.get_Range("D18", "D18");
+            totalRange.Value2 = totalFoundNow;
+            totalRange = wsh2.get_Range("C16", "C16");
+            totalRange.Value2 = totalPay;
+            totalRange = wsh2.get_Range("C18", "C18");
+            totalRange.Value2 = totalPay;
+
             //Форматируем итоговую таблицу
             Excel.Range tRange = wsh.get_Range(startCell, "I" + rowCounter);
             tRange.Borders.LineStyle = Excel.XlLineStyle.xlContinuous;
@@ -499,12 +533,14 @@ namespace ExcelApp
             tRange.Value2 = totalEndNach;
             tRange = wsh.get_Range("H" + rowCounter, "H" + rowCounter);
             tRange.Value2 = totalEndPay;
+            tRange = wsh.get_Range("A" + rowCounter, "H" + rowCounter);
+            tRange.Font.Bold = true;
 
 
 
             //Получаем адрес дома для формирования имени файла
-
-            string fileName = path + streetType + streetName;
+            string cityName = @ConfigurationManager.AppSettings.Get("CITY");
+            string fileName = path + cityName + "\\"+streetType + streetName;
 
             if(!Directory.Exists(fileName))
                 Directory.CreateDirectory(fileName);
@@ -517,6 +553,7 @@ namespace ExcelApp
 
 
             fileName += "\\" + RemoveInvalidChars(houseName) + ".xlsx";
+            Console.WriteLine(fileName);
             //DataTable houseAddr = GetHouseAddr(houseID);            
             //foreach (DataRow dataRow in houseAddr.Rows)
             //{
@@ -732,7 +769,7 @@ namespace ExcelApp
             //csbuilder["Multisubnetfailover"] = "True";
             //csbuilder["Trusted_Connection"] = true;         
 
-            string queryString = $@"SELECT distinct AOGUID, OFFNAME, SHORTNAME
+            string queryString = $@"SELECT distinct AOGUID, OFFNAME, SHORTNAME, AOLEVEL
                                     FROM [ORACLE].[dbo].[FIAS_ADDROBJ_LOAD]
                                     where PARENTGUID = '{cityGUID}' and AOLEVEL = 7 and ACTSTATUS = 1
                                     order by aoguid";
