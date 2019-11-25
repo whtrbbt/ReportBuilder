@@ -14,14 +14,18 @@ namespace ExcelApp
         {
 
             //Проверяем признак наличия улиц и выбираем нужный метод
-            if (ConfigurationManager.AppSettings.Get("STREET_HAVE_NAME") == "1")
-                CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
+            if (ConfigurationManager.AppSettings.Get("FORCE_NO_STREET") == "0")
+            {
+                if(CityStreetHaveName(@ConfigurationManager.AppSettings.Get("CITYGUID")))
+                    CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
+                else
+                    StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
+            }
             else
-                StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
-            
+               StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
             //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
             //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
-            //HouseReport(31054,"1","1","1","1","1");
+            //HouseReport(1068514, "1","1","1","1","1");
 
         }
 
@@ -549,7 +553,7 @@ namespace ExcelApp
             if(houseSufix != "")
                 houseName = houseName + "_" + houseSufix;
             if(houseCorp != "")                
-                houseName = houseName + "_" + houseCorp;
+                houseName = houseName + "к" + houseCorp;
 
 
             fileName += "\\" + RemoveInvalidChars(houseName) + ".xlsx";
@@ -728,6 +732,8 @@ namespace ExcelApp
 
             foreach (DataRow active_row in houses.Rows)
             {
+                houseCorp = "";
+                houseSufix = "";
                 if(!Convert.IsDBNull(active_row["BUILDNUM"]))
                     houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
                 if(!Convert.IsDBNull(active_row["STRUCNUM"]))
@@ -802,6 +808,44 @@ namespace ExcelApp
             }
             return file_name;
         }
+
+        public static bool CityStreetHaveName (string cityGUID)
+        //Проверяет наличе улиц в нас. пункте
+        {
+            DataTable houses = new DataTable();
+            SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
+            csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
+            csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
+            csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
+            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
+            //csbuilder["Multisubnetfailover"] = "True";
+            //csbuilder["Trusted_Connection"] = true;         
+
+            string queryString = $@"SELECT distinct AOGUID
+                                    FROM [ORACLE].[dbo].[FIAS_ADDROBJ_LOAD]
+                                    where PARENTGUID = '{cityGUID}' and AOLEVEL = 7 and ACTSTATUS = 1
+                                    order by aoguid";
+
+            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+            SqlCommand cmd = new SqlCommand(queryString, conn);
+            conn.Open();
+            SqlDataAdapter da = new SqlDataAdapter(cmd);
+            da.Fill(houses);
+
+            if(houses.Rows.Count > 0)
+            {
+                conn.Close();
+                da.Dispose();
+                return true;
+            }
+            else
+            {
+                conn.Close();
+                da.Dispose();
+                return false;
+            }
+         }
         
         private static bool IsEven(int a)
         {
