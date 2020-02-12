@@ -4,6 +4,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.IO;
 using Excel = Microsoft.Office.Interop.Excel;
+using CSVUtility;
 
 
 namespace ExcelApp
@@ -13,23 +14,52 @@ namespace ExcelApp
         static void Main(string[] args)
         {
 
-            //Проверяем признак наличия улиц и выбираем нужный метод
-            if (ConfigurationManager.AppSettings.Get("FORCE_NO_STREET") == "0")
+            // Определяем режим работы: пакетный или нет
+            if (ConfigurationManager.AppSettings.Get("BATCH_MODE") == "1")
             {
-                if(CityStreetHaveName(@ConfigurationManager.AppSettings.Get("CITYGUID")))
-                    CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"));
-                else
-                    StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
+                BatchMode(@ConfigurationManager.AppSettings.Get("BATCH_MAP"));
             }
             else
-               StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), "", "нет улицы"); //для НП без улиц
-            //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
-            //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
-            //HouseReport(1068514, "1","1","1","1","1");
-
+            {
+                //Проверяем признак наличия улиц и выбираем нужный метод
+                if (ConfigurationManager.AppSettings.Get("FORCE_NO_STREET") == "0")
+                {
+                    if (CityStreetHaveName(@ConfigurationManager.AppSettings.Get("CITYGUID")))
+                        CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"));
+                    else
+                        StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"), "", "нет улицы"); //для НП без улиц
+                }
+                else
+                    StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"), "", "нет улицы"); //для НП без улиц
+                                                                                                      //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
+                                                                                                      //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
+                                                                                                      //HouseReport(1068514, "1","1","1","1","1");
+            }
         }
 
-        public static void HouseReport(int houseID, string streetType, string streetName, string houseNum, string houseCorp, string houseSufix)
+
+        public static void BatchMode (string batchFileName)
+        {
+            DataTable reportMap = new DataTable();
+            reportMap = CSVUtility.CSVUtility.GetDataTabletFromCSVFile(batchFileName);
+            foreach (DataRow dr in reportMap.AsEnumerable())
+            {
+                //Проверяем признак наличия улиц и выбираем нужный метод
+                if (dr["STREET"].ToString() == "1")
+                {
+                    if (CityStreetHaveName(dr["AOGUID"].ToString()))
+                        CityReport(dr["AOGUID"].ToString(), dr["NP"].ToString());
+                    else
+                        StreetReport(dr["AOGUID"].ToString(), dr["NP"].ToString(), "", "нет улицы"); //для НП без улиц
+                }
+                else
+                    StreetReport(dr["AOGUID"].ToString(), dr["NP"].ToString(), "", "нет улицы");
+                //Console.WriteLine(dr["AOGUID"].ToString());
+                //Console.WriteLine(dr["NP"].ToString());
+            }
+        }
+
+        public static void HouseReport(int houseID, string cityName, string streetType, string streetName, string houseNum, string houseCorp, string houseSufix)
         //Формирует отчет по дому
         {
             DataTable report = new DataTable();
@@ -434,7 +464,7 @@ namespace ExcelApp
 
             //Выводим адрес дома
             string houseAddr = "";
-            houseAddr = @ConfigurationManager.AppSettings.Get("OBL") + ", " + @ConfigurationManager.AppSettings.Get("CITY")+", "+
+            houseAddr = @ConfigurationManager.AppSettings.Get("OBL") + ", " + cityName +", "+
                 streetType + " " + streetName + ", д." + houseNum + " " + houseCorp + " "+ houseSufix;
             Excel.Range titulRange = wsh1.get_Range("C7", "C7");
             titulRange.Value2 = houseAddr;
@@ -500,17 +530,17 @@ namespace ExcelApp
             Excel.Range totalRange;
             Excel.Worksheet wsh2 = wb.Worksheets.get_Item(1) as Excel.Worksheet;
             totalRange = wsh2.get_Range("E16", "E16");
-            totalRange.Value2 = totalPayNow;
+            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
             totalRange = wsh2.get_Range("E18", "E18");
-            totalRange.Value2 = totalPayNow;
+            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
             totalRange = wsh2.get_Range("D16", "D16");
-            totalRange.Value2 = totalFoundNow;
+            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
             totalRange = wsh2.get_Range("D18", "D18");
-            totalRange.Value2 = totalFoundNow;
+            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
             totalRange = wsh2.get_Range("C16", "C16");
-            totalRange.Value2 = totalPay;
+            totalRange.Value2 = Math.Round(totalPay / 1000, 2, MidpointRounding.AwayFromZero);
             totalRange = wsh2.get_Range("C18", "C18");
-            totalRange.Value2 = totalPay;
+            totalRange.Value2 = Math.Round(totalPay / 1000, 2, MidpointRounding.AwayFromZero);
 
             //Форматируем итоговую таблицу
             Excel.Range tRange = wsh.get_Range(startCell, "I" + rowCounter);
@@ -543,7 +573,7 @@ namespace ExcelApp
 
 
             //Получаем адрес дома для формирования имени файла
-            string cityName = @ConfigurationManager.AppSettings.Get("CITY");
+            //string cityName = @ConfigurationManager.AppSettings.Get("CITY");
             string fileName = path + cityName + "\\"+streetType + streetName;
 
             if(!Directory.Exists(fileName))
@@ -688,7 +718,7 @@ namespace ExcelApp
         }
 
         
-        public static void StreetReport (string aoGUID, string streetType ,string streetName)
+        public static void StreetReport (string aoGUID, string cityName, string streetType, string streetName)
         //Формирует отчет по всем домам на улице
         {
             DataTable houses = new DataTable();
@@ -717,41 +747,49 @@ namespace ExcelApp
             //csbuilder["Trusted_Connection"] = true;         
 
             string queryString = $@"SELECT ADDR, HOUSENUM, BUILDNUM, STRUCNUM  FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE AOGUID = '{aoGUID}'";
-
-            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
-            SqlCommand cmd = new SqlCommand(queryString, conn);
-            conn.Open();
-            SqlDataAdapter da = new SqlDataAdapter(cmd);
-            da.Fill(houses);
-            
-            int houseID = 0;
-            string houseCorp = "";
-            string houseSufix = "";
-
-            Console.WriteLine(streetName);
-
-            foreach (DataRow active_row in houses.Rows)
+            try
             {
-                houseCorp = "";
-                houseSufix = "";
-                if(!Convert.IsDBNull(active_row["BUILDNUM"]))
-                    houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
-                if(!Convert.IsDBNull(active_row["STRUCNUM"]))
-                    houseSufix = @Convert.ToString(active_row["STRUCNUM"]);
+                SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+                SqlCommand cmd = new SqlCommand(queryString, conn);
+                conn.Open();
+                SqlDataAdapter da = new SqlDataAdapter(cmd);
+                da.Fill(houses);
 
-                HouseReport(Convert.ToInt32(active_row["ADDR"]), streetType ,streetName, Convert.ToString(active_row["HOUSENUM"]), houseCorp, houseSufix);
+                int houseID = 0;
+                string houseCorp = "";
+                string houseSufix = "";
+
+                Console.WriteLine(streetName);
+
+                foreach (DataRow active_row in houses.Rows)
+                {
+                    houseCorp = "";
+                    houseSufix = "";
+                    if (!Convert.IsDBNull(active_row["BUILDNUM"]))
+                        houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
+                    if (!Convert.IsDBNull(active_row["STRUCNUM"]))
+                        houseSufix = @Convert.ToString(active_row["STRUCNUM"]);
+
+                    HouseReport(Convert.ToInt32(active_row["ADDR"]), cityName,streetType, streetName, Convert.ToString(active_row["HOUSENUM"]), houseCorp, houseSufix);
+                }
+                conn.Close();
+
             }
 
-            conn.Close();
-            da.Dispose();
+            catch (System.Exception ex)
+            {
+                throw new Exception("Ошибка при получении данных из БД: " + ex.Message);
+            }
+
+
+
 
         }
 
-        public static void CityReport(string cityGUID)
+        public static void CityReport(string cityGUID, string cityName)
         //Формирует отчет по всем домам в городе
         {
             DataTable streets = new DataTable();
-
             // DataTable fullAddr = new DataTable();
             DataColumn column;
             DataRow row;
@@ -763,7 +801,7 @@ namespace ExcelApp
             //string houseCorp = "";
             //string houseSufix = "";
 
-
+            Console.WriteLine(cityName);
 
             SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
 
@@ -790,8 +828,7 @@ namespace ExcelApp
 
             foreach(DataRow active_row in streets.Rows)
             {
-                StreetReport(Convert.ToString(active_row["AOGUID"]), Convert.ToString(active_row["SHORTNAME"]), Convert.ToString(active_row["OFFNAME"]));
-                
+                StreetReport(Convert.ToString(active_row["AOGUID"]), cityName, Convert.ToString(active_row["SHORTNAME"]), Convert.ToString(active_row["OFFNAME"]));                
             }
 
             conn.Close();
