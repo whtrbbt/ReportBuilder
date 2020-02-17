@@ -54,8 +54,6 @@ namespace ExcelApp
                 }
                 else
                     StreetReport(dr["AOGUID"].ToString(), dr["NP"].ToString(), "", "нет улицы");
-                //Console.WriteLine(dr["AOGUID"].ToString());
-                //Console.WriteLine(dr["NP"].ToString());
             }
         }
 
@@ -69,7 +67,7 @@ namespace ExcelApp
             string path = @ConfigurationManager.AppSettings.Get("PATH");
             string TEMPL_PATH = @ConfigurationManager.AppSettings.Get("TEMPL_PATH");
 
-            //Задаем структуру таблицы houseTable----------------
+            #region Задаем структуру таблицы houseTable
 
             column = new DataColumn();
             column.ColumnName = "flat_num";
@@ -104,14 +102,15 @@ namespace ExcelApp
             column.DataType = System.Type.GetType("System.Double");
             column.ColumnName = "pay_val_end";
             houseTable.Columns.Add(column);
-            //------------------------------------------------------
+            #endregion
 
             double cellValue = 0;
             double startCorrValue = 0;
             double nowCorrValue = 0;
             double endPeriodSaldo = 0;
             string reportPeriod = @ConfigurationManager.AppSettings.Get("ReportPeriod");
-            //string MSSQLtableName = @ConfigurationManager.AppSettings.Get("MSSQLtableName");
+            double reportString = 0;
+
             DateTime START_REPORT_PERIOD = Convert.ToDateTime(@ConfigurationManager.AppSettings.Get("StartReportPeriod"));
             DateTime END_REPORT_PERIOD = Convert.ToDateTime(@ConfigurationManager.AppSettings.Get("EndReportPeriod"));
             DateTime PREVIOS_REPORT_PERIOD_END = START_REPORT_PERIOD.AddDays(-1);
@@ -132,8 +131,7 @@ namespace ExcelApp
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
             csbuilder["Connect Timeout"] = 6000;
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
-            //csbuilder["Multisubnetfailover"] = "True";
-            //csbuilder["Trusted_Connection"] = true;
+
                         
             string queryString = $@"
                 select house, flat_num, fls_full, resp_person,
@@ -160,22 +158,19 @@ namespace ExcelApp
                     else FLAT_NUM
                 end";
 
-            //Console.WriteLine(queryString);
-
             SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
             SqlCommand cmd = new SqlCommand(queryString, conn);
             conn.Open();
             SqlDataAdapter da = new SqlDataAdapter(cmd);
-            // this will query your database and return the result to your datatable
             
             da.Fill(report);
-            //houseTable = report.Clone();
 
             double totalPayNow = 0; //Итог по платежам в отчетном периоде
             double totalFoundNow = 0; //Итог по всем поступлениям за отчетный период
             double totalPay = 0; // Итог по всем платежам
 
-            foreach(DataRow active_row in report.Rows)
+            #region готовим данные для отчета
+            foreach (DataRow active_row in report.Rows)
             {
                 row = houseTable.NewRow();
                 cellValue = 0;
@@ -358,7 +353,7 @@ namespace ExcelApp
                         row["nach_val_end"] = 0;
                         row["pay_val_end"] = endPeriodSaldo;
                     }
-                    else
+                    else //endPeriodSaldo = 0
                     {
                         row["nach_val_end"] = endPeriodSaldo;
                         row["pay_val_end"] = 0;
@@ -381,7 +376,7 @@ namespace ExcelApp
                         row["nach_val_end"] = 0;
                         row["pay_val_end"] = endPeriodSaldo;
                     }
-                    else
+                    else //endPeriodSaldo = 0
                     {
                         row["nach_val_end"] = endPeriodSaldo;
                         row["pay_val_end"] = 0;
@@ -403,29 +398,38 @@ namespace ExcelApp
                         row["nach_val_end"] = 0;
                         row["pay_val_end"] = endPeriodSaldo;
                     }
-                    else
+                    else //endPeriodSaldo = 0
                     {
                         row["nach_val_end"] = endPeriodSaldo;
                         row["pay_val_end"] = 0;
                     }
                 }
 
-                    //Добавляем строку в таблицу для отчета если она не нулевая
-                    if((Convert.ToDouble(row["nach_val_start"]) + Convert.ToDouble(row["pay_val_start"]) + Convert.ToDouble(row["nach_val_now"]) + Convert.ToDouble(row["pay_val_now"])
-                    + Convert.ToDouble(row["nach_val_end"]) + Convert.ToDouble(row["pay_val_end"])) != 0)
+                //Расчитываем контрольную сумму по строке
+                
+                reportString = (Convert.ToDouble(row["nach_val_start"]) + Convert.ToDouble(row["pay_val_start"]) + Convert.ToDouble(row["nach_val_now"]) + Convert.ToDouble(row["pay_val_now"])
+                    + Convert.ToDouble(row["nach_val_end"]) + Convert.ToDouble(row["pay_val_end"]));
+                //Добавляем строку в таблицу для отчета если она не нулевая                
+                if (reportString != 0)
                     houseTable.Rows.Add(row);
                 //иначе удаляем строку
-                else row = null;
+                else row = null; //reportString = 0
             }
+            #endregion
 
-            //Считаем итоги
+            #region Считаем итоги
+            double startBalance = 0;    //остаток средств на начало отчетного периода по дому
+            double endBalance = 0;      //остаток средств на конец отчетного периода по дому
+            double repairVolume = GetHouseRepairVolume(houseID);
+                                        //Объем выполненных работ по капитальному ремонту дома в рублях
+
             double totalStartNach = 0;  //итог по начислениям на начало периода
             double totalStartPay = 0;   //итог по платежам на начало периода
             double totalNowNach = 0;    //Итог по начислениям на момент отчета
             double totalNowPay = 0;     //Итог по платежам на момент отчета
             double totalEndNach = 0;    //Итог по начислениям на конец периода
             double totalEndPay = 0;     //Итог по платежам на конец периода
-            
+
             foreach(DataRow total_row in houseTable.Rows)
             {
                 totalStartNach += Convert.ToDouble(total_row["nach_val_start"]);
@@ -435,17 +439,17 @@ namespace ExcelApp
                 totalEndNach += Convert.ToDouble(total_row["nach_val_end"]);
                 totalEndPay += Convert.ToDouble(total_row["pay_val_end"]);
             }
+            
 
+            #endregion
 
-            ///Выгружаем данные в Excel
+            #region Выгружаем данные в Excel
             //Объявляем приложение
             Excel.Application exc = new Microsoft.Office.Interop.Excel.Application();
 
             Excel.XlReferenceStyle RefStyle = exc.ReferenceStyle;
 
-            Excel.Workbook wb = null;
-            
-            //string TemplatePath = "house_report.xltx";
+            Excel.Workbook wb = null;          
             
             try
             {
@@ -455,8 +459,8 @@ namespace ExcelApp
             {
                 throw new Exception("Не удалось загрузить шаблон для экспорта " + TEMPL_PATH + "\n" + ex.Message);
             }
-            //Console.WriteLine("Шаблон найден, начинаю выгрузку.Это может занять несколько минут.");
-            //Excel.Sheets excelsheets;
+
+            #region заполняем первый лист
 
             //Заполняем реквизиты отчета
 
@@ -473,6 +477,50 @@ namespace ExcelApp
             titulRange = wsh1.get_Range("C8", "C8");
             titulRange.Value2 = reportPeriod;
 
+            //Выводим итоги по платежам на первый лист
+            totalFoundNow = totalPayNow;
+            startBalance = totalPay - repairVolume;
+            endBalance = startBalance + totalFoundNow;
+            Excel.Range totalRange;            
+            totalRange = wsh1.get_Range("E16", "E16"); // 4.Поступило в отчетном периоде взносов (за счет минимального взноса) 
+            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("E18", "E18"); // 4.Поступило в отчетном периоде взносов (итого)
+            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("D16", "D16"); // 3.Поступило в отчетном периоде всего (за счет минимального взноса)
+            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("D18", "D18"); // 3.Поступило в отчетном периоде всего (итого)
+            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("C16", "C16"); // 2.Остаток средств на начало отчетного периода (за счет минимального взноса)
+            totalRange.Value2 = Math.Round(startBalance / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("C18", "C18"); // 2.Остаток средств на начало отчетного периода (итого)
+            totalRange.Value2 = Math.Round(startBalance / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("J16", "J16"); // 9.Остаток средств на конец отчетного периода (за счет минимального взноса)
+            totalRange.Value2 = Math.Round(endBalance / 1000, 2, MidpointRounding.AwayFromZero);
+            totalRange = wsh1.get_Range("J18", "J18"); // 9.Остаток средств на конец отчетного периода (итого)
+            totalRange.Value2 = Math.Round(endBalance / 1000, 2, MidpointRounding.AwayFromZero);
+            #endregion
+
+            #region заполняем второй лист
+            
+            Excel.Worksheet wsh2 = wb.Worksheets.get_Item(2) as Excel.Worksheet;
+            Excel.Range repairRange;
+
+            string workName = "Кап. ремонт";
+
+            repairRange = wsh2.get_Range("B7", "B7"); // 1.Виды работ и услуг по капитальному ремонту
+            repairRange.Value2 = workName;
+            repairRange = wsh2.get_Range("C7", "C7"); // 2.Стоимость работ и услуг по капитальному ремонту (кап. ремонт)
+            repairRange.Value2 = Math.Round(repairVolume / 1000, 2, MidpointRounding.AwayFromZero);
+            repairRange = wsh2.get_Range("C8", "C8"); // 2.Стоимость работ и услуг по капитальному ремонту (итого)
+            repairRange.Value2 = Math.Round(repairVolume / 1000, 2, MidpointRounding.AwayFromZero);
+            repairRange = wsh2.get_Range("D7", "D7"); // 3.Размер средств направленных на капитальный ремонт (кап. ремонт)
+            repairRange.Value2 = Math.Round(repairVolume / 1000, 2, MidpointRounding.AwayFromZero);
+            repairRange = wsh2.get_Range("D8", "D8"); // 3.Размер средств направленных на капитальный ремонт (итого)
+            repairRange.Value2 = Math.Round(repairVolume / 1000, 2, MidpointRounding.AwayFromZero);
+
+            #endregion
+
+            #region заполняем третий лист
             //Выбираем третий лист
             Excel.Worksheet wsh = wb.Worksheets.get_Item(3) as Excel.Worksheet;
 
@@ -524,24 +572,6 @@ namespace ExcelApp
                 rowCounter++;
 
             }
-
-            //Выводим итоги по платежам на первый лист
-            totalFoundNow = totalPayNow;
-            Excel.Range totalRange;
-            Excel.Worksheet wsh2 = wb.Worksheets.get_Item(1) as Excel.Worksheet;
-            totalRange = wsh2.get_Range("E16", "E16");
-            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
-            totalRange = wsh2.get_Range("E18", "E18");
-            totalRange.Value2 = Math.Round(totalPayNow / 1000, 2, MidpointRounding.AwayFromZero);
-            totalRange = wsh2.get_Range("D16", "D16");
-            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
-            totalRange = wsh2.get_Range("D18", "D18");
-            totalRange.Value2 = Math.Round(totalFoundNow / 1000, 2, MidpointRounding.AwayFromZero);
-            totalRange = wsh2.get_Range("C16", "C16");
-            totalRange.Value2 = Math.Round(totalPay / 1000, 2, MidpointRounding.AwayFromZero);
-            totalRange = wsh2.get_Range("C18", "C18");
-            totalRange.Value2 = Math.Round(totalPay / 1000, 2, MidpointRounding.AwayFromZero);
-
             //Форматируем итоговую таблицу
             Excel.Range tRange = wsh.get_Range(startCell, "I" + rowCounter);
             tRange.Borders.LineStyle = Excel.XlLineStyle.xlContinuous;
@@ -570,10 +600,9 @@ namespace ExcelApp
             tRange = wsh.get_Range("A" + rowCounter, "H" + rowCounter);
             tRange.Font.Bold = true;
 
-
+            #endregion
 
             //Получаем адрес дома для формирования имени файла
-            //string cityName = @ConfigurationManager.AppSettings.Get("CITY");
             string fileName = path + cityName + "\\"+streetType + streetName;
 
             if(!Directory.Exists(fileName))
@@ -588,44 +617,17 @@ namespace ExcelApp
 
             fileName += "\\" + RemoveInvalidChars(houseName) + ".xlsx";
             Console.WriteLine(fileName);
-            //DataTable houseAddr = GetHouseAddr(houseID);            
-            //foreach (DataRow dataRow in houseAddr.Rows)
-            //{
-            //    fileName = Convert.ToString (dataRow["HOUSENUM"]);
-            //    if(Convert.ToString(dataRow["HOUSECORP"])!="")
-            //        fileName += "_" + Convert.ToString(dataRow["HOUSECORP"]);
-            //    if(Convert.ToString(dataRow["HOUSESUFIX"])!="")
-            //        fileName += "_" + Convert.ToString(dataRow["HOUSESUFIX"]);
-            //    fileName += ".xlsx";
-            //    break;
-            //}
 
             wb.SaveAs(fileName);
             exc.Quit();
+            #endregion
             conn.Close();
             da.Dispose();
 
-            /*  Excel.Range c1 = (Excel.Range)wsh.Cells[3, 1];
-              Excel.Range c2 = (Excel.Range)wsh.Cells[1 + grid.Rows.Count - 1, grid.Columns.Count];
-              Excel.Range range = (Excel.Range)wsh.get_Range(c1, c2);
-              range.Value2 = d;*/
-
-            //Excel.Visible = true;
-            /* //Отобразить Excel
-             ex.Visible = true;
-             //Количество листов в рабочей книге
-             ex.SheetsInNewWorkbook = 2;
-             //Добавить рабочую книгу
-             Excel.Workbook workBook = ex.Workbooks.Add(Type.Missing);
-             //Отключить отображение окон с сообщениями
-             ex.DisplayAlerts = false;
-             //Получаем первый лист документа (счет начинается с 1)
-             Excel.Worksheet sheet = (Excel.Worksheet)ex.Worksheets.get_Item(1);
-             //Название листа (вкладки снизу)
-             sheet.Name = "Отчет за 13.12.2017";*/
         }
 
         public static DataTable GetHouseAddr(int houseID)
+        //Получаем адрес дома
         {
             DataTable house = new DataTable();
             
@@ -634,7 +636,7 @@ namespace ExcelApp
             DataRow row;
 
 
-            //Задаем структуру таблицы fullAddr----------------
+            #region Задаем структуру таблицы fullAddr
 
             column = new DataColumn();
             column.ColumnName = "HOUSENUM";
@@ -656,21 +658,7 @@ namespace ExcelApp
             column.ColumnName = "AOGUID";
             fullAddr.Columns.Add(column);
 
-            //column = new DataColumn();
-            //column.DataType = System.Type.GetType("System.Double");
-            //column.ColumnName = "pay_val_now";
-            //fullAddr.Columns.Add(column);
-
-            //column = new DataColumn();
-            //column.DataType = System.Type.GetType("System.Double");
-            //column.ColumnName = "nach_val_end";
-            //fullAddr.Columns.Add(column);
-
-            //column = new DataColumn();
-            //column.DataType = System.Type.GetType("System.Double");
-            //column.ColumnName = "pay_val_end";
-            //fullAddr.Columns.Add(column);
-            //------------------------------------------------------
+            #endregion
 
             string houseAOGUID = "";
             string houseNum = "";
@@ -686,8 +674,6 @@ namespace ExcelApp
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
             csbuilder["Connect Timeout"] = 6000;
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
-            //csbuilder["Multisubnetfailover"] = "True";
-            //csbuilder["Trusted_Connection"] = true;
 
             string queryString = $@"SELECT DISTINCT AOGUID, HOUSENUM, BUILDNUM, STRUCNUM FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE ADDR = {houseID}";
 
@@ -717,25 +703,12 @@ namespace ExcelApp
             return fullAddr;
         }
 
-        
-        public static void StreetReport (string aoGUID, string cityName, string streetType, string streetName)
-        //Формирует отчет по всем домам на улице
+        public static double GetHouseRepairVolume (int houseID)
+        //Получаем объем выполненых работ по кап. ремонту дома в рублях
         {
-            DataTable houses = new DataTable();
-            
-           // DataTable fullAddr = new DataTable();
-            DataColumn column;
-            DataRow row;
+            double repairVolume = 0;
+            DataTable house = new DataTable();
 
-
-
-            //string houseAOGUID = "";
-            //string houseNum = "";
-            //string houseCorp = "";
-            //string houseSufix = "";
-            
-            
-            
             SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
 
             csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
@@ -743,8 +716,46 @@ namespace ExcelApp
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
             csbuilder["Connect Timeout"] = 6000;
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
-            //csbuilder["Multisubnetfailover"] = "True";
-            //csbuilder["Trusted_Connection"] = true;         
+
+            string queryString = $@"SELECT 
+                                    [ADDR],SUM([VOL]) VOL,[ADDR_STR]
+                                    FROM [ORACLE].[dbo].[REMONT_VOLUME]
+                                    WHERE ADDR = {houseID}
+                                    GROUP BY ADDR, ADDR_STR";
+
+            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+            SqlCommand cmd = new SqlCommand(queryString, conn);
+            conn.Open();
+            SqlDataAdapter da = new SqlDataAdapter(cmd);
+            da.Fill(house);
+
+            if (house.Rows.Count > 0)
+                foreach (DataRow dr in house.AsEnumerable())
+                    repairVolume = Convert.ToDouble(dr["VOL"]);
+            else //house.Rows.Count <= 0
+                repairVolume = 0;
+            
+            conn.Close();
+            da.Dispose();
+            return repairVolume;
+        }
+
+
+        public static void StreetReport (string aoGUID, string cityName, string streetType, string streetName)
+        //Формирует отчет по всем домам на улице
+        {
+            DataTable houses = new DataTable();            
+           
+            DataColumn column;
+            DataRow row;          
+            
+            SqlConnectionStringBuilder csbuilder = new SqlConnectionStringBuilder("");
+
+            csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
+            csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
+            csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
+            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром      
 
             string queryString = $@"SELECT ADDR, HOUSENUM, BUILDNUM, STRUCNUM  FROM [ORACLE].dbo.FIAS_HOUSE_VIEW WHERE AOGUID = '{aoGUID}'";
             try
@@ -790,16 +801,8 @@ namespace ExcelApp
         //Формирует отчет по всем домам в городе
         {
             DataTable streets = new DataTable();
-            // DataTable fullAddr = new DataTable();
             DataColumn column;
             DataRow row;
-
-
-
-            //string houseAOGUID = "";
-            //string houseNum = "";
-            //string houseCorp = "";
-            //string houseSufix = "";
 
             Console.WriteLine(cityName);
 
@@ -809,9 +812,7 @@ namespace ExcelApp
             csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
             csbuilder["Connect Timeout"] = 6000;
-            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
-            //csbuilder["Multisubnetfailover"] = "True";
-            //csbuilder["Trusted_Connection"] = true;         
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром     
 
             string queryString = $@"SELECT distinct AOGUID, OFFNAME, SHORTNAME, AOLEVEL
                                     FROM [ORACLE].[dbo].[FIAS_ADDROBJ_LOAD]
@@ -855,9 +856,7 @@ namespace ExcelApp
             csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
             csbuilder["Connect Timeout"] = 6000;
-            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
-            //csbuilder["Multisubnetfailover"] = "True";
-            //csbuilder["Trusted_Connection"] = true;         
+            csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром      
 
             string queryString = $@"SELECT distinct AOGUID
                                     FROM [ORACLE].[dbo].[FIAS_ADDROBJ_LOAD]
