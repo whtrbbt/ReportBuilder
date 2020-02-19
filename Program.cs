@@ -14,26 +14,30 @@ namespace ExcelApp
         static void Main(string[] args)
         {
 
-            // Определяем режим работы: пакетный или нет
+            #region !!!ТОЛЬКО ДЛЯ ОТЛАДКИ!!!
+            //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
+            //StreetReport("396fa47e-b36d-4c80-bcca-9d56c6c79ad6", "г. Мурманск", "проезд", "Ледокольный");
+            //HouseReport(1068514, "п 19км","","нет улицы","4","","");
+            #endregion
+
+
+            //// Определяем режим работы: пакетный или нет
             if (ConfigurationManager.AppSettings.Get("BATCH_MODE") == "1")
             {
                 BatchMode(@ConfigurationManager.AppSettings.Get("BATCH_MAP"));
             }
-            else
+            else //ConfigurationManager.AppSettings.Get("BATCH_MODE") <> "1"
             {
                 //Проверяем признак наличия улиц и выбираем нужный метод
                 if (ConfigurationManager.AppSettings.Get("FORCE_NO_STREET") == "0")
                 {
                     if (CityStreetHaveName(@ConfigurationManager.AppSettings.Get("CITYGUID")))
                         CityReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"));
-                    else
+                    else // CityStreetHaveName == false
                         StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"), "", "нет улицы"); //для НП без улиц
                 }
-                else
-                    StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"), "", "нет улицы"); //для НП без улиц
-                                                                                                      //CityReport("30fa6bcc-608e-40cb-b22a-b202967ff2a6");
-                                                                                                      //StreetReport("003eb85c-27a7-41fc-b0c1-ffefc4b98755");
-                                                                                                      //HouseReport(1068514, "1","1","1","1","1");
+                else //ConfigurationManager.AppSettings.Get("FORCE_NO_STREET") <> "0"
+                    StreetReport(@ConfigurationManager.AppSettings.Get("CITYGUID"), @ConfigurationManager.AppSettings.Get("CITY"), "", "нет улицы"); //для НП без улиц                                                                                                      
             }
         }
 
@@ -129,11 +133,12 @@ namespace ExcelApp
             csbuilder["Server"] = @ConfigurationManager.AppSettings.Get("MSSQL_Server");
             csbuilder["UID"] = @ConfigurationManager.AppSettings.Get("UID");
             csbuilder["Password"] = @ConfigurationManager.AppSettings.Get("Password");
-            csbuilder["Connect Timeout"] = 6000;
+            csbuilder["Connect Timeout"] = 12000;
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
 
-                        
-            string queryString = $@"
+            try
+            {
+                string queryString = $@"
                 select house, flat_num, fls_full, resp_person,
                 (select sum (val) from [ORACLE].[dbo].doc_nach where DOC_NACH.fls = fls_short and DOC_NACH.CREATED between '01.01.2014' and '{previosReportPeriodEnd}' ) as nach_val_start,
                 (select sum (val) from [ORACLE].[dbo].doc_pay where DOC_pay.fls = fls_short and (pay_date between '01.01.2014' and '{previosReportPeriodEnd}') and (date_inp between '01.01.2014' and '{previosReportPeriodEnd}') ) as pay_val_start,
@@ -158,13 +163,21 @@ namespace ExcelApp
                     else FLAT_NUM
                 end";
 
-            SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
-            SqlCommand cmd = new SqlCommand(queryString, conn);
-            conn.Open();
-            SqlDataAdapter da = new SqlDataAdapter(cmd);
+                SqlConnection conn = new SqlConnection(csbuilder.ConnectionString);
+                SqlCommand cmd = new SqlCommand(queryString, conn);
+                conn.Open();
+                cmd.CommandTimeout = 600; //увеличиваем время выполнения запросов для особо "жирных" домов
+                SqlDataAdapter da = new SqlDataAdapter(cmd);                
+                da.Fill(report);
+                conn.Close();
+                da.Dispose();
+            }
+            catch (System.Exception ex)
+            {
+                Console.WriteLine("Ошибка при получении данных по дому ID" + houseID + " из БД: " + ex.Message);
+                //--throw new Exception("Ошибка при получении данных по дому ID"+ houseID + " из БД: " + ex.Message);
+            }
             
-            da.Fill(report);
-
             double totalPayNow = 0; //Итог по платежам в отчетном периоде
             double totalFoundNow = 0; //Итог по всем поступлениям за отчетный период
             double totalPay = 0; // Итог по всем платежам
@@ -196,6 +209,7 @@ namespace ExcelApp
                 //Обрабатываем данные на начало отчетного периода
 
                 if((!Convert.IsDBNull(active_row["nach_val_start"])) & (!Convert.IsDBNull(active_row["pay_val_start"])))
+                
                 {                                 
 					cellValue = Convert.ToDouble(active_row["nach_val_start"]) - Convert.ToDouble(active_row["pay_val_start"]) + startCorrValue;
 
@@ -620,10 +634,7 @@ namespace ExcelApp
 
             wb.SaveAs(fileName);
             exc.Quit();
-            #endregion
-            conn.Close();
-            da.Dispose();
-
+            #endregion            
         }
 
         public static DataTable GetHouseAddr(int houseID)
@@ -718,7 +729,7 @@ namespace ExcelApp
             csbuilder["integrated Security"] = true; //для коннекта с локальным экземпляром
 
             string queryString = $@"SELECT 
-                                    [ADDR],SUM([VOL]) VOL,[ADDR_STR]
+                                    [ADDR],SUM([VOL]) VOL
                                     FROM [ORACLE].[dbo].[REMONT_VOLUME]
                                     WHERE ADDR = {houseID}
                                     GROUP BY ADDR, ADDR_STR";
@@ -765,26 +776,7 @@ namespace ExcelApp
                 conn.Open();
                 SqlDataAdapter da = new SqlDataAdapter(cmd);
                 da.Fill(houses);
-
-                int houseID = 0;
-                string houseCorp = "";
-                string houseSufix = "";
-
-                Console.WriteLine(streetName);
-
-                foreach (DataRow active_row in houses.Rows)
-                {
-                    houseCorp = "";
-                    houseSufix = "";
-                    if (!Convert.IsDBNull(active_row["BUILDNUM"]))
-                        houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
-                    if (!Convert.IsDBNull(active_row["STRUCNUM"]))
-                        houseSufix = @Convert.ToString(active_row["STRUCNUM"]);
-
-                    HouseReport(Convert.ToInt32(active_row["ADDR"]), cityName,streetType, streetName, Convert.ToString(active_row["HOUSENUM"]), houseCorp, houseSufix);
-                }
                 conn.Close();
-
             }
 
             catch (System.Exception ex)
@@ -792,9 +784,23 @@ namespace ExcelApp
                 throw new Exception("Ошибка при получении данных из БД: " + ex.Message);
             }
 
+            int houseID = 0;
+            string houseCorp = "";
+            string houseSufix = "";
 
+            Console.WriteLine(streetName);
 
+            foreach (DataRow active_row in houses.Rows)
+            {
+                houseCorp = "";
+                houseSufix = "";
+                if (!Convert.IsDBNull(active_row["BUILDNUM"]))
+                    houseCorp = @Convert.ToString(active_row["BUILDNUM"]);
+                if (!Convert.IsDBNull(active_row["STRUCNUM"]))
+                    houseSufix = @Convert.ToString(active_row["STRUCNUM"]);
 
+                HouseReport(Convert.ToInt32(active_row["ADDR"]), cityName, streetType, streetName, Convert.ToString(active_row["HOUSENUM"]), houseCorp, houseSufix);
+            }
         }
 
         public static void CityReport(string cityGUID, string cityName)
@@ -824,15 +830,15 @@ namespace ExcelApp
             conn.Open();
             SqlDataAdapter da = new SqlDataAdapter(cmd);
             da.Fill(streets);
+            conn.Close();
 
 
-
-            foreach(DataRow active_row in streets.Rows)
+            foreach (DataRow active_row in streets.Rows)
             {
                 StreetReport(Convert.ToString(active_row["AOGUID"]), cityName, Convert.ToString(active_row["SHORTNAME"]), Convert.ToString(active_row["OFFNAME"]));                
             }
 
-            conn.Close();
+            
             da.Dispose();
         }
 
